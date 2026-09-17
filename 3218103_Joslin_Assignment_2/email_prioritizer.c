@@ -30,7 +30,10 @@
  *                 with a leading blank line (tracked via a "first output"
  *                 flag) instead of a trailing blank line, which fixed a bug
  *                 where the program printed an extra blank line after the
- *                 final command in a run.
+ *                 final command in a run.  Added per-line comments to
+ *                 trim(), dateToKey(), splitEmailFields(), handleEmailCommand(),
+ *                 and main() so every line's purpose is documented, not just
+ *                 each function as a block.
  * Compile:        gcc email_prioritizer.c -o email_prioritizer
  * ========================================================================== */
 
@@ -184,15 +187,17 @@ static int categoryRank(const char *category)
 static long dateToKey(const char *date)
 {
     int digits[8]; /* MM DD YYYY = 8 digits                                  */
-    int found = 0;
-    int i;
-    long month = 0;
-    long day = 0;
-    long year = 0;
+    int found = 0;  /* number of digit characters collected so far           */
+    int i;          /* index into the raw date string                       */
+    long month = 0; /* two-digit month reassembled from digits[0..1]         */
+    long day = 0;   /* two-digit day reassembled from digits[2..3]           */
+    long year = 0;  /* four-digit year reassembled from digits[4..7]         */
 
     for (i = 0; date[i] != '\0' && found < 8; i++) {
+        /* Only digit characters matter; '-' and any stray spaces are
+         * skipped automatically by simply not being added to digits[]. */
         if (date[i] >= '0' && date[i] <= '9') {
-            digits[found++] = date[i] - '0';
+            digits[found++] = date[i] - '0'; /* store the digit, advance     */
         }
     }
 
@@ -200,9 +205,11 @@ static long dateToKey(const char *date)
         return 0; /* malformed date: treat as the oldest possible date       */
     }
 
-    month = digits[0] * 10L + digits[1];
-    day = digits[2] * 10L + digits[3];
+    month = digits[0] * 10L + digits[1];   /* combine the two month digits   */
+    day = digits[2] * 10L + digits[3];     /* combine the two day digits     */
     year = ((digits[4] * 10L + digits[5]) * 10L + digits[6]) * 10L + digits[7];
+    /* year built one digit at a time above so no single intermediate value
+     * can overflow before it is scaled by its place value.                 */
 
     return year * 10000L + month * 100L + day; /* YYYYMMDD ordering          */
 }
@@ -358,26 +365,26 @@ static void heapRemoveTop(MaxHeap *heap)
 /* Remove leading and trailing whitespace from a string in place. */
 static void trim(char *text)
 {
-    size_t start = 0;
-    size_t end;
-    size_t length = strlen(text);
+    size_t start = 0;              /* index of the first non-blank char     */
+    size_t end;                    /* index just past the last non-blank    */
+    size_t length = strlen(text);  /* original length of the string         */
 
     while (start < length &&
            (text[start] == ' ' || text[start] == '\t' ||
             text[start] == '\r' || text[start] == '\n')) {
-        start++;
+        start++; /* skip one more leading whitespace character              */
     }
 
-    end = length;
+    end = length; /* begin scanning for trailing whitespace from the end    */
     while (end > start &&
            (text[end - 1] == ' ' || text[end - 1] == '\t' ||
             text[end - 1] == '\r' || text[end - 1] == '\n')) {
-        end--;
+        end--; /* drop one more trailing whitespace character                */
     }
 
     /* Shift the surviving characters to the front and terminate. */
-    memmove(text, text + start, end - start);
-    text[end - start] = '\0';
+    memmove(text, text + start, end - start); /* close the leading gap      */
+    text[end - start] = '\0';                 /* cut off the trailing part  */
 }
 
 /* Split the body of an EMAIL command ("category,subject,date") into its three
@@ -387,61 +394,61 @@ static void trim(char *text)
  * Returns 1 on success and 0 when the body is malformed. */
 static int splitEmailFields(const char *body, char *sender, char *subject, char *date)
 {
-    const char *firstComma = strchr(body, ',');
-    const char *secondComma = NULL;
-    size_t senderLength;
-    size_t subjectLength;
+    const char *firstComma = strchr(body, ',');  /* end of the sender field  */
+    const char *secondComma = NULL;               /* end of the subject field */
+    size_t senderLength;   /* number of characters in the sender field       */
+    size_t subjectLength;  /* number of characters in the subject field      */
 
     if (firstComma == NULL) {
         return 0; /* no field separators at all                              */
     }
 
-    secondComma = strchr(firstComma + 1, ',');
+    secondComma = strchr(firstComma + 1, ','); /* look past the first comma  */
     if (secondComma == NULL) {
         return 0; /* only two fields supplied                                */
     }
 
-    senderLength = (size_t)(firstComma - body);
-    subjectLength = (size_t)(secondComma - (firstComma + 1));
+    senderLength = (size_t)(firstComma - body);               /* body..first */
+    subjectLength = (size_t)(secondComma - (firstComma + 1)); /* first..second */
 
     /* Guard against overrunning the destination buffers. */
     if (senderLength >= MAX_FIELD || subjectLength >= MAX_FIELD ||
         strlen(secondComma + 1) >= MAX_FIELD) {
-        return 0;
+        return 0; /* reject rather than truncate or overflow                 */
     }
 
-    memcpy(sender, body, senderLength);
-    sender[senderLength] = '\0';
-    memcpy(subject, firstComma + 1, subjectLength);
-    subject[subjectLength] = '\0';
-    strcpy(date, secondComma + 1);
+    memcpy(sender, body, senderLength);   /* copy the sender field's bytes   */
+    sender[senderLength] = '\0';          /* NUL-terminate the sender copy   */
+    memcpy(subject, firstComma + 1, subjectLength); /* copy the subject text */
+    subject[subjectLength] = '\0';        /* NUL-terminate the subject copy  */
+    strcpy(date, secondComma + 1);        /* everything after the 2nd comma */
 
-    trim(sender);
-    trim(subject);
-    trim(date);
+    trim(sender);   /* drop stray whitespace left around the sender field    */
+    trim(subject);  /* drop stray whitespace left around the subject field   */
+    trim(date);     /* drop stray whitespace/newline left around the date    */
 
-    return 1;
+    return 1; /* all three fields extracted successfully                    */
 }
 
 /* Build an Email from the text of an EMAIL command and insert it. */
 static void handleEmailCommand(MaxHeap *heap, const char *body)
 {
-    Email email;
-    char sender[MAX_FIELD];
-    char subject[MAX_FIELD];
-    char date[MAX_FIELD];
+    Email email;                 /* the record that will be inserted        */
+    char sender[MAX_FIELD];      /* scratch buffer for the sender field     */
+    char subject[MAX_FIELD];     /* scratch buffer for the subject field    */
+    char date[MAX_FIELD];        /* scratch buffer for the date field       */
 
     if (!splitEmailFields(body, sender, subject, date)) {
         return; /* ignore malformed EMAIL lines                              */
     }
 
-    strcpy(email.sender, sender);
-    strcpy(email.subject, subject);
-    strcpy(email.date, date);
+    strcpy(email.sender, sender);   /* copy the parsed sender into the record */
+    strcpy(email.subject, subject); /* copy the parsed subject into the record */
+    strcpy(email.date, date);       /* copy the parsed date into the record  */
     email.rank = categoryRank(sender);   /* precompute the category priority */
     email.dateKey = dateToKey(date);     /* precompute the sortable date     */
 
-    heapInsert(heap, email);
+    heapInsert(heap, email); /* place the fully-built record into the heap  */
 }
 
 /* ==========================================================================
@@ -491,13 +498,13 @@ static void printCount(const MaxHeap *heap)
  * ========================================================================== */
 int main(void)
 {
-    MaxHeap heap;
-    char line[MAX_LINE];
+    MaxHeap heap;          /* the CEO's priority queue of unread emails      */
+    char line[MAX_LINE];   /* buffer for one line read from stdin            */
 
-    heapInit(&heap);
+    heapInit(&heap); /* start with an empty queue                           */
 
-    while (fgets(line, sizeof(line), stdin) != NULL) {
-        char *command = line;
+    while (fgets(line, sizeof(line), stdin) != NULL) { /* read until EOF    */
+        char *command = line; /* alias so trim() can modify it in place      */
 
         trim(command); /* drop the newline and any stray whitespace          */
 
@@ -510,15 +517,15 @@ int main(void)
         if (strncmp(command, "EMAIL", 5) == 0) {
             handleEmailCommand(&heap, command + 5); /* skip past "EMAIL"     */
         } else if (strcmp(command, "NEXT") == 0) {
-            printNext(&heap);
+            printNext(&heap); /* show, but do not remove, the top email      */
         } else if (strcmp(command, "READ") == 0) {
             heapRemoveTop(&heap); /* silent removal                          */
         } else if (strcmp(command, "COUNT") == 0) {
-            printCount(&heap);
+            printCount(&heap); /* report how many emails remain unread       */
         }
         /* Unrecognized commands are ignored. */
     }
 
     heapDestroy(&heap); /* release every remaining node                      */
-    return 0;
+    return 0;           /* success                                          */
 }
